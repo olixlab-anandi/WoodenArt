@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { Product } from '@/models/Product';
 import { Category } from '@/models/Category';
+import { Rating } from '@/models/Rating';
 import { cacheGetJSON, cacheSetJSON } from '@/lib/redis';
 
 export async function GET(req: NextRequest) {
@@ -26,12 +27,36 @@ export async function GET(req: NextRequest) {
       : [];
     const idToCategory = new Map(categories.map(c => [String(c._id), c.name]));
 
+    // Fetch ratings for all products
+    const productIds = products.map((p: any) => p._id).filter(Boolean);
+    const ratings = productIds.length > 0
+      ? await Rating.find({ productId: { $in: productIds } }).lean()
+      : [];
+    
+    // Group ratings by productId
+    const ratingsByProduct = new Map<string, { count: number; sum: number }>();
+    ratings.forEach((r: any) => {
+      const pid = String(r.productId);
+      const current = ratingsByProduct.get(pid) || { count: 0, sum: 0 };
+      ratingsByProduct.set(pid, {
+        count: current.count + 1,
+        sum: current.sum + r.rating,
+      });
+    });
+
     const rows = products.map((p: any) => {
       const price = Number(p.price || 0);
       const discount = p.discount != null ? Number(p.discount) : 0;
       const finalPrice = discount > 0 ? price - (price * discount) / 100 : price;
+      const productId = p._id ? String(p._id) : '';
+      const ratingData = ratingsByProduct.get(productId);
+      const averageRating = ratingData && ratingData.count > 0
+        ? Math.round((ratingData.sum / ratingData.count) * 10) / 10
+        : (p.averageRating || 0);
+      const totalRatings = ratingData?.count || p.totalRatings || 0;
+      
       return {
-        id: p._id ? String(p._id) : '',
+        id: productId,
         name: p.name,
         description: p.description || '',
         price,
@@ -45,6 +70,8 @@ export async function GET(req: NextRequest) {
         image: p.featureImage || undefined,
         featureImage: p.featureImage || undefined,
         images: Array.isArray(p.images) ? p.images : [],
+        averageRating,
+        totalRatings,
       };
     });
 

@@ -7,7 +7,8 @@
     "build": "next build --turbopack",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "seed-ratings": "node scripts/seed-ratings.js"
   },
   "dependencies": {
     "@apollo/client": "^4.0.7",

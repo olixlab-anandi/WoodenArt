@@ -169,8 +169,8 @@ export default function ShopPage() {
                       description={product.description || null}
                       price={product.price}
                       discount={discount}
-                      rating={4.5}
-                      reviewsCount={Number(product.totalRatings) || 120}
+                      rating={Number(product.averageRating) || 0}
+                      reviewsCount={Number(product.totalRatings) || 0}
                       stock={product.stock || 0}
                       category={product.category}
                       onAddToCart={() => handleAddToCart(product.id)}

@@ -77,6 +77,12 @@ interface UserWhereClause {
 }
 
 export const userResolvers = {
+  User: {
+    id: (parent: any) => {
+      // Handle both _id (MongoDB) and id (already transformed) cases
+      return parent.id || String(parent._id);
+    },
+  },
   Query: {
     me: async (_: unknown, __: unknown, context: Context) => {
       if (!context.user) {
@@ -121,8 +127,17 @@ export const userResolvers = {
         User.countDocuments(where),
       ]);
 
-      const edges = users.map((user, index) => ({
-        node: user,
+      const edges = users.map((user: any, index) => ({
+        node: {
+          id: String(user._id),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          isActive: user.isActive,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
         cursor: Buffer.from((skip + index).toString()).toString('base64'),
       }));
 
@@ -155,7 +170,16 @@ export const userResolvers = {
         throw new Error('User not found');
       }
 
-      return user;
+      return {
+        id: String((user as any)._id),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      };
     },
   },
 

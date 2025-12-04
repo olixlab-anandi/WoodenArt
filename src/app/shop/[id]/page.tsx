@@ -6,7 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAppDispatch, useAppSelector } from '@/redux/store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Heart, ShoppingCart, Star, Minus, Plus } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Heart, ShoppingCart, Star, Minus, Plus, Trash2, Edit2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
@@ -24,12 +26,31 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<any[]>([]);
+  const [loadingRatings, setLoadingRatings] = useState(false);
+  const [userRating, setUserRating] = useState<any>(null);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
 
   useEffect(() => {
     if (productId) {
       fetchProduct();
+      fetchRatings();
     }
   }, [productId]);
+
+  useEffect(() => {
+    if (user && ratings.length > 0) {
+      const myRating = ratings.find(r => String(r.userId) === String(user.id));
+      if (myRating) {
+        setUserRating(myRating);
+        setRatingValue(myRating.rating);
+        setReviewText(myRating.review || '');
+      }
+    }
+  }, [user, ratings]);
 
   // When product changes, reset active image so a refresh shows the original image
   useEffect(() => {
@@ -56,6 +77,97 @@ export default function ProductDetailPage() {
       toast.error('Failed to load product');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRatings = async () => {
+    if (!productId) return;
+    setLoadingRatings(true);
+    try {
+      const res = await fetch(`/api/ratings?productId=${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRatings(data.ratings || []);
+      }
+    } catch (error) {
+      console.error('Ratings fetch error:', error);
+    } finally {
+      setLoadingRatings(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (!user) {
+      toast.error('Please login to submit a review');
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/ratings', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          productId,
+          rating: ratingValue,
+          review: reviewText.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(userRating ? 'Review updated successfully!' : 'Review submitted successfully!');
+        setReviewDialogOpen(false);
+        await fetchRatings();
+        await fetchProduct(); // Refresh product to update average rating
+        setUserRating(data.rating);
+      } else {
+        toast.error(data.error || 'Failed to submit review');
+      }
+    } catch (error) {
+      console.error('Review submission error:', error);
+      toast.error('Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (ratingId: string) => {
+    if (!user) return;
+    if (!confirm('Are you sure you want to delete your review?')) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`/api/ratings/${ratingId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (res.ok) {
+        toast.success('Review deleted successfully!');
+        setUserRating(null);
+        setReviewText('');
+        setRatingValue(5);
+        await fetchRatings();
+        await fetchProduct(); // Refresh product to update average rating
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to delete review');
+      }
+    } catch (error) {
+      console.error('Review deletion error:', error);
+      toast.error('Failed to delete review');
     }
   };
 
@@ -251,8 +363,22 @@ export default function ProductDetailPage() {
               </div>
 
               <div className="flex items-center gap-2 mb-6">
-                <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                <span className="text-lg font-medium">4.5</span>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const avgRating = product.averageRating || 0;
+                    return (
+                      <Star
+                        key={star}
+                        className={`w-5 h-5 ${
+                          star <= Math.round(avgRating)
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-gray-300'
+                        }`}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-lg font-medium">{product.averageRating?.toFixed(1) || '0.0'}</span>
                 <span className="text-gray-500">({product.totalRatings || 0} reviews)</span>
               </div>
 
@@ -330,6 +456,146 @@ export default function ProductDetailPage() {
                 </Button>
               </div>
             </div>
+          </div>
+
+          {/* Reviews Section */}
+          <div className="mt-16">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-bold text-gray-900">Customer Reviews</h2>
+              {user && (
+                <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      {userRating ? <Edit2 className="w-4 h-4 mr-2" /> : <Star className="w-4 h-4 mr-2" />}
+                      {userRating ? 'Edit Review' : 'Write a Review'}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>{userRating ? 'Edit Your Review' : 'Write a Review'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-6 py-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Rating</label>
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setRatingValue(star)}
+                              className="focus:outline-none"
+                            >
+                              <Star
+                                className={`w-8 h-8 transition-colors ${
+                                  star <= ratingValue
+                                    ? 'fill-yellow-400 text-yellow-400'
+                                    : 'text-gray-300 hover:text-yellow-200'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                          <span className="ml-2 text-sm text-gray-600">{ratingValue} out of 5</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Review (Optional)</label>
+                        <Textarea
+                          value={reviewText}
+                          onChange={(e) => setReviewText(e.target.value)}
+                          placeholder="Share your experience with this product..."
+                          rows={5}
+                          className="resize-none"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setReviewDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleSubmitReview}
+                          disabled={submittingReview}
+                        >
+                          {submittingReview ? 'Submitting...' : userRating ? 'Update Review' : 'Submit Review'}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+
+            {loadingRatings ? (
+              <div className="text-center py-12">
+                <span className="loader"></span>
+              </div>
+            ) : ratings.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+                <Star className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 text-lg">No reviews yet</p>
+                <p className="text-gray-400 text-sm mt-2">Be the first to review this product!</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {ratings.map((rating) => (
+                  <div
+                    key={rating.id}
+                    className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                            <span className="text-amber-700 font-semibold">
+                              {rating.user?.firstName?.[0]?.toUpperCase() || 'U'}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              {rating.user?.firstName} {rating.user?.lastName}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {new Date(rating.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 mb-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-4 h-4 ${
+                                star <= rating.rating
+                                  ? 'fill-yellow-400 text-yellow-400'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        {rating.review && (
+                          <p className="text-gray-700 leading-relaxed mt-2">{rating.review}</p>
+                        )}
+                      </div>
+                      {user && (String(rating.userId) === String(user.id) || user.role === 'ADMIN') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteReview(rating.id)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

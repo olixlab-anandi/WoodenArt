@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { Product } from '@/models/Product';
 import { Category } from '@/models/Category';
+import { Rating } from '@/models/Rating';
 import { cacheGetJSON, cacheSetJSON } from '@/lib/redis';
 
 export async function GET(
@@ -33,6 +34,13 @@ export async function GET(
       if (cat) category = { id: String(cat._id), name: cat.name };
     }
 
+    // Fetch ratings count and average (already in product, but ensure it's up to date)
+    const ratingsCount = await Rating.countDocuments({ productId: id });
+    const ratings = await Rating.find({ productId: id }).lean();
+    const avgRating = ratings.length > 0
+      ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length
+      : 0;
+
     const result = {
       product: {
         id: String(product._id),
@@ -47,8 +55,8 @@ export async function GET(
         color: product.color ?? null,
         style: product.style ?? null,
         specialFeature: product.specialFeature ?? null,
-        averageRating: product.averageRating ?? 0,
-        totalRatings: product.totalRatings ?? 0,
+        averageRating: Math.round(avgRating * 10) / 10,
+        totalRatings: ratingsCount,
         category,
       },
     };
