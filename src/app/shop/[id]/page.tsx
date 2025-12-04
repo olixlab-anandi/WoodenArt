@@ -463,14 +463,14 @@ export default function ProductDetailPage() {
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-3xl font-bold text-gray-900">Customer Reviews</h2>
               {user && (
-                <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+                <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen} >
                   <DialogTrigger asChild>
                     <Button variant="outline">
                       {userRating ? <Edit2 className="w-4 h-4 mr-2" /> : <Star className="w-4 h-4 mr-2" />}
                       {userRating ? 'Edit Review' : 'Write a Review'}
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
+                  <DialogContent className="max-w-2xl bg-white">
                     <DialogHeader>
                       <DialogTitle>{userRating ? 'Edit Your Review' : 'Write a Review'}</DialogTitle>
                     </DialogHeader>
